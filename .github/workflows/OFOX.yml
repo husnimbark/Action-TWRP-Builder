@@ -44,11 +44,6 @@ on:
         description: 'Path of blobs to check'
         required: true
         default: 'system/bin/qseecomd'
-      RECOVERY_TAR:
-        description: 'Release recovery.tar For Samsung devices'
-        required: false
-        default: false
-        type: boolean
       RECOVERY_INSTALLER:
         description: 'Include recovery installer zip'
         type: boolean
