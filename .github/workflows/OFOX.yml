@@ -14,7 +14,7 @@ on:
       DEVICE_TREE:
         description: 'Device Recovery Tree'
         required: true
-        default: 'https://github.com/husnimbark/recovery_device_tecno_TECNO-KM6.git'
+        default: 'https://github.com/husnimbark/device_tecno_KM6'
       DEVICE_TREE_BRANCH:
         description: 'Custom Recovery Tree Branch'
         required: true
@@ -24,7 +24,7 @@ on:
         required: true
         default: 'device/tecno/TECNO-KM6'
       DEVICE_NAME:
-        description: 'Specify your Device Codename.'
+        description: 'Specify your Device Codename (codename only, e.g. KM6 not TECNO-KM6).'
         required: true
         default: 'KM6'
       BUILD_TARGET:
@@ -117,8 +117,20 @@ jobs:
       with:
         # fox_12.1 uses ofox_ lunch prefix; fox_14.1 uses omni_ (experimental)
         cond: ${{ github.event.inputs.MANIFEST_BRANCH == '12.1' }}
-        if_true: lunch ofox_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka adbd ${{ github.event.inputs.BUILD_TARGET }}image
+        if_true: lunch ofox_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka adbd vendorbootimage
         if_false: lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka ${{ github.event.inputs.BUILD_TARGET }}image
+
+
+    - name: Debug - Check vendor folder
+      run: |
+        echo "=== Listing vendor/ folder ==="
+        ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/ || echo "vendor/ not found"
+        echo "=== Listing vendor/twrp (if exists) ==="
+        ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/twrp/ 2>/dev/null || echo "vendor/twrp not found"
+        echo "=== Listing vendor/recovery (if exists) ==="
+        ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/recovery/ 2>/dev/null || echo "vendor/recovery not found"
+        echo "=== Listing vendor/omni (if exists) ==="
+        ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/omni/ 2>/dev/null || echo "vendor/omni not found"
 
     - name: Building OrangeFox
       run: |
