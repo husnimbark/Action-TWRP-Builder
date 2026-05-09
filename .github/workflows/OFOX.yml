@@ -22,11 +22,11 @@ on:
       DEVICE_PATH:
         description: 'Specify your device path.'
         required: true
-        default: 'device/infinix/X6886'
+        default: 'device/tecno/TECNO-KM6'
       DEVICE_NAME:
         description: 'Specify your Device Codename.'
         required: true
-        default: 'X6886'
+        default: 'TECNO-KM6'
       BUILD_TARGET:
         description: 'Specify your Build Target'
         required: true
