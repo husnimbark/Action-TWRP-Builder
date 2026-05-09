@@ -26,7 +26,7 @@ on:
       DEVICE_NAME:
         description: 'Specify your Device Codename.'
         required: true
-        default: 'TECNO-KM6'
+        default: 'KM6'
       BUILD_TARGET:
         description: 'Specify your Build Target'
         required: true
