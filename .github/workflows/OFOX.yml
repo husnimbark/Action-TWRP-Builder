@@ -20,11 +20,15 @@ on:
         required: true
         default: 'ofox-12.1'
       DEVICE_PATH:
-        description: 'Specify your device path.'
+        description: 'Specify your device path (LOCAL_PATH / DEVICE_PATH in BoardConfig.mk)'
         required: true
         default: 'device/tecno/TECNO-KM6'
       DEVICE_NAME:
-        description: 'Specify your Device Codename (codename only, e.g. KM6 not TECNO-KM6).'
+        description: 'PRODUCT_DEVICE in BoardConfig.mk → dipakai untuk path out/target/product/'
+        required: true
+        default: 'TECNO-KM6'
+      LUNCH_NAME:
+        description: 'PRODUCT_NAME suffix di ofox_*.mk (isi KM6, prefix ofox_ otomatis ditambah)'
         required: true
         default: 'KM6'
       BUILD_TARGET:
@@ -67,10 +71,15 @@ jobs:
     - name: Display Inputs
       run: |
         echo "::group::User Environment Variables"
-        echo "Displaying variables/inputs."
-        echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
-        echo "Include Recovery Installer: ${{ github.event.inputs.RECOVERY_INSTALLER }}"
-        echo "Release recovery.tar For Samsung devices: ${{ github.event.inputs.RECOVERY_TAR }}"
+        echo "Manifest Branch   : ${{ github.event.inputs.MANIFEST_BRANCH }}"
+        echo "Device Tree       : ${{ github.event.inputs.DEVICE_TREE }}"
+        echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
+        echo "Device Path       : ${{ github.event.inputs.DEVICE_PATH }}"
+        echo "DEVICE_NAME       : ${{ github.event.inputs.DEVICE_NAME }}"
+        echo "LUNCH_NAME        : ${{ github.event.inputs.LUNCH_NAME }}"
+        echo "Build Target      : ${{ github.event.inputs.BUILD_TARGET }}"
+        echo "Recovery Installer: ${{ github.event.inputs.RECOVERY_INSTALLER }}"
+        echo "Recovery TAR      : ${{ github.event.inputs.RECOVERY_TAR }}"
         echo "::endgroup::"
 
     - name: Clean-up
@@ -86,7 +95,6 @@ jobs:
         sudo apt update
         sudo apt -y upgrade
         rm -rf scripts
-        # Clone OrangeFox misc scripts (latest from GitLab)
         git clone https://gitlab.com/OrangeFox/misc/scripts
         cd scripts
         sudo bash setup/android_build_env.sh
@@ -98,10 +106,8 @@ jobs:
         cd ${GITHUB_WORKSPACE}/OrangeFox
         git config --global user.name "${{ github.actor }}"
         git config --global user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-        # Clone the latest OrangeFox sync script from GitLab
         git clone https://gitlab.com/OrangeFox/sync.git
         cd sync
-        # Sync using the official orangefox_sync.sh — always pulls the latest R12 sources
         ./orangefox_sync.sh --branch ${{ github.event.inputs.MANIFEST_BRANCH }} --path ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
 
     - name: Clone Device Tree
@@ -115,33 +121,60 @@ jobs:
       uses: haya14busa/action-cond@v1
       id: fox_branch
       with:
-        # fox_12.1 uses ofox_ lunch prefix; fox_14.1 uses omni_ (experimental)
+        # KM6 mendaftarkan lunch combo "ofox_KM6-eng" di AndroidProducts.mk
+        # (bukan twrp_ prefix seperti di wiki umum, karena PRODUCT_NAME=ofox_KM6)
+        # VAB + GKI2.0 (BOOT_HEADER_VERSION=4) → target: vendorbootimage
         cond: ${{ github.event.inputs.MANIFEST_BRANCH == '12.1' }}
-        if_true: lunch ofox_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka adbd vendorbootimage
-        if_false: lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng && make clean && mka ${{ github.event.inputs.BUILD_TARGET }}image
-
+        if_true: lunch ofox_${{ github.event.inputs.LUNCH_NAME }}-eng && make clean && mka adbd ${{ github.event.inputs.BUILD_TARGET == 'vendorboot' && 'vendorbootimage' || github.event.inputs.BUILD_TARGET == 'recovery' && 'recoveryimage' || 'bootimage' }}
+        if_false: lunch omni_${{ github.event.inputs.LUNCH_NAME }}-eng && make clean && mka ${{ github.event.inputs.BUILD_TARGET }}image
 
     - name: Debug - Check vendor folder
       run: |
         echo "=== Listing vendor/ folder ==="
         ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/ || echo "vendor/ not found"
-        echo "=== Listing vendor/twrp (if exists) ==="
-        ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/twrp/ 2>/dev/null || echo "vendor/twrp not found"
         echo "=== Listing vendor/recovery (if exists) ==="
         ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/recovery/ 2>/dev/null || echo "vendor/recovery not found"
-        echo "=== Listing vendor/omni (if exists) ==="
-        ls ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/vendor/omni/ 2>/dev/null || echo "vendor/omni not found"
 
     - name: Building OrangeFox
       run: |
         cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         set +e
         source build/envsetup.sh
+
+        # === Export wajib sesuai wiki resmi OrangeFox ===
         export ALLOW_MISSING_DEPENDENCIES=true
-        # Recommended export for VAB (Virtual A/B) devices on fox_12.1
+        export LC_ALL="C"
+
+        # FOX_BUILD_DEVICE wajib di-export sebelum lunch
+        # agar OrangeFox build vars (FOX_*) diproses dengan benar (wiki tip I)
+        export FOX_BUILD_DEVICE=${{ github.event.inputs.LUNCH_NAME }}
+
+        # KM6 = Virtual A/B device
+        # BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT = true
         export FOX_VIRTUAL_AB_DEVICE=1
+        export FOX_AB_DEVICE=1
+
+        # KM6 pakai prebuilt kernel (TARGET_NO_KERNEL=true di BoardConfig.mk)
+        # Wajib set ini agar tidak error "NO KERNEL CONFIG" (wiki tip H)
+        export OF_FORCE_PREBUILT_KERNEL=1
+
+        # Keymaster version KM6 = 4 (sesuai OF_DEFAULT_KEYMASTER_VERSION di BoardConfig.mk)
+        # Wajib untuk cegah build stuck di logo / masalah decryption (wiki tip J)
+        export OF_DEFAULT_KEYMASTER_VERSION=4
+
         set -e
         ${{ steps.fox_branch.outputs.value }}
+
+        # === Debug output setelah build ===
+        echo "::group::Build Output Debug"
+        OUT_DIR="out/target/product/${{ github.event.inputs.DEVICE_NAME }}"
+        echo "--- .img files in ${OUT_DIR} ---"
+        ls ${OUT_DIR}/*.img 2>/dev/null || echo "No .img found!"
+        echo "--- OrangeFox* files ---"
+        find ${OUT_DIR} -maxdepth 2 -name "OrangeFox*" 2>/dev/null || echo "No OrangeFox* found"
+        echo "--- vendor_boot* files ---"
+        find ${OUT_DIR} -maxdepth 2 -name "vendor_boot*" 2>/dev/null || echo "No vendor_boot* found"
+        echo "::endgroup::"
 
     - name: Set Build Date
       run: |
@@ -155,16 +188,29 @@ jobs:
     - name: Check if Recovery Exists
       run: |
         cd ${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-        if [ -f out/target/product/${{ github.event.inputs.DEVICE_NAME }}/OrangeFox*.img ]; then
+        # DEVICE_NAME = PRODUCT_DEVICE (TECNO-KM6)
+        # karena out/target/product/ menggunakan PRODUCT_DEVICE, bukan PRODUCT_NAME
+        OUT_DIR="out/target/product/${{ github.event.inputs.DEVICE_NAME }}"
+
+        echo "=== Isi out directory ==="
+        ls ${OUT_DIR}/ 2>/dev/null || echo "Out dir tidak ditemukan!"
+
+        # Cek OrangeFox*.img (output resmi OrangeFox setelah rename otomatis)
+        # Fallback: vendor_boot.img (raw output dari mka vendorbootimage)
+        if ls ${OUT_DIR}/OrangeFox*.img 1>/dev/null 2>&1; then
             echo "CHECK_IMG_IS_OK=true" >> $GITHUB_ENV
-            echo "FILE_PATH=${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-            echo "MD5_IMG=$(md5sum out/target/product/${{ github.event.inputs.DEVICE_NAME }}/OrangeFox*.img | cut -d ' ' -f 1)" >> $GITHUB_ENV
-        elif [ -f out/target/product/${{ github.event.inputs.DEVICE_NAME }}/target/product/${{ github.event.inputs.DEVICE_NAME }}/OrangeFox*.img ]; then
+            echo "FILE_PATH=${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/${OUT_DIR}" >> $GITHUB_ENV
+            echo "MD5_IMG=$(md5sum ${OUT_DIR}/OrangeFox*.img | cut -d ' ' -f 1)" >> $GITHUB_ENV
+            echo "Found: OrangeFox*.img"
+        elif [ -f ${OUT_DIR}/vendor_boot.img ]; then
             echo "CHECK_IMG_IS_OK=true" >> $GITHUB_ENV
-            echo "FILE_PATH=${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/target/product/${{ github.event.inputs.DEVICE_NAME }}" >> $GITHUB_ENV
-            echo "MD5_IMG=$(md5sum out/target/product/${{ github.event.inputs.DEVICE_NAME }}/target/product/${{ github.event.inputs.DEVICE_NAME }}/OrangeFox*.img | cut -d ' ' -f 1)" >> $GITHUB_ENV
+            echo "FILE_PATH=${GITHUB_WORKSPACE}/OrangeFox/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/${OUT_DIR}" >> $GITHUB_ENV
+            echo "MD5_IMG=$(md5sum ${OUT_DIR}/vendor_boot.img | cut -d ' ' -f 1)" >> $GITHUB_ENV
+            echo "Found: vendor_boot.img (VAB fallback)"
         else
             echo "Recovery out directory is empty."
+            echo "=== Full file listing ==="
+            find ${OUT_DIR} -maxdepth 1 -type f 2>/dev/null || echo "Out dir empty/not found"
             exit 1
         fi
 
@@ -172,17 +218,17 @@ jobs:
       run: |
         cd ${{ env.FILE_PATH }}/
         if [ "${{ github.event.inputs.BUILD_TARGET }}" = "boot" ]; then
-          mv OrangeFox*.img boot.img
+          if ls OrangeFox*.img 1>/dev/null 2>&1; then mv OrangeFox*.img boot.img; fi
           echo "RECOVERY_TYPE=boot" >> $GITHUB_ENV
-          echo "boot.img file found!"
+          echo "boot.img found!"
         elif [ "${{ github.event.inputs.BUILD_TARGET }}" = "recovery" ]; then
-          mv OrangeFox*.img recovery.img
+          if ls OrangeFox*.img 1>/dev/null 2>&1; then mv OrangeFox*.img recovery.img; fi
           echo "RECOVERY_TYPE=recovery" >> $GITHUB_ENV
-          echo "recovery.img file found!"
+          echo "recovery.img found!"
         elif [ "${{ github.event.inputs.BUILD_TARGET }}" = "vendorboot" ]; then
-          mv OrangeFox*.img vendor_boot.img
+          if ls OrangeFox*.img 1>/dev/null 2>&1; then mv OrangeFox*.img vendor_boot.img; fi
           echo "RECOVERY_TYPE=vendor_boot" >> $GITHUB_ENV
-          echo "vendor_boot.img file found!"
+          echo "vendor_boot.img found!"
         else
           echo "No Recovery file found!"
         fi
@@ -194,14 +240,6 @@ jobs:
           cd ${{ env.FILE_PATH }}/
           wget https://github.com/kinguser981/recovery-installer/releases/download/11256427880/recovery-installer.zip
           zip -ur recovery-installer.zip ${{ env.RECOVERY_TYPE }}.img
-        fi
-      continue-on-error: true
-
-    - name: Recovery to tar for Samsung devices
-      run: |
-        if [ "${{ github.event.inputs.RECOVERY_TAR }}" = "true" ]; then
-          cd ${{ env.FILE_PATH }}/
-          tar -cvf ${{ env.RECOVERY_TYPE }}.tar ${{ env.RECOVERY_TYPE }}.img
         fi
       continue-on-error: true
 
