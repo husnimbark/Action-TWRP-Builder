@@ -74,7 +74,6 @@ jobs:
         echo "LUNCH_NAME        : ${{ github.event.inputs.LUNCH_NAME }}"
         echo "Build Target      : ${{ github.event.inputs.BUILD_TARGET }}"
         echo "Recovery Installer: ${{ github.event.inputs.RECOVERY_INSTALLER }}"
-        echo "Recovery TAR      : ${{ github.event.inputs.RECOVERY_TAR }}"
         echo "::endgroup::"
 
     - name: Clean-up
