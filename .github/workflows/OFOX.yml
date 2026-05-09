@@ -14,7 +14,7 @@ on:
       DEVICE_TREE:
         description: 'Device Recovery Tree'
         required: true
-        default: 'https://github.com/husnimbark/device_tecno_KM6'
+        default: 'https://github.com/husnimbark/recovery_device_tecno_TECNO-KM6.git'
       DEVICE_TREE_BRANCH:
         description: 'Custom Recovery Tree Branch'
         required: true
